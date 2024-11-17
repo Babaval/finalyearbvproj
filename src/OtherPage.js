@@ -1,10 +1,9 @@
 import React, { Component } from "react";
 import axios from "axios";
 import { Card, Grid, Icon, Input, Button, Table } from "semantic-ui-react";
-import { QRCodeCanvas } from "qrcode.react"; // QR code component
+import { QRCodeCanvas } from "qrcode.react";
 
-const apiKey = "FBXGXMYSW5AGYX7P4YZV2HHCRD3439B4HG"; // Etherscan API Key
-const openSeaEndpoint = `https://api.opensea.io/api/v1/asset`;
+const apiKey = "FBXGXMYSW5AGYX7P4YZV2HHCRD3439B4HG";
 const endpoint = `https://api.etherscan.io/api`;
 
 class OtherPage extends Component {
@@ -14,14 +13,10 @@ class OtherPage extends Component {
       ethUSD: "",
       ethBTC: "",
       latestBlock: 0,
-      difficulty: "",
+      difficulty: "N/A",
       marketCap: 0,
       erc721Transactions: [],
-      erc721Metadata: {},
-      erc721Price: "N/A",
-      previousPrice: "N/A",
-      priceChangePercentage: "N/A",
-      contractAddress: "", // User-input for contract address
+      contractAddress: "",
     };
   }
 
@@ -59,12 +54,7 @@ class OtherPage extends Component {
       );
       const latestBlock = parseInt(latestBlockData.result, 16);
 
-      const { data: blockDetailData } = await axios.get(
-        `${endpoint}?module=proxy&action=eth_getBlockByNumber&tag=${latestBlockData.result}&boolean=true&apikey=${apiKey}`
-      );
-      const difficulty = `${(parseInt(blockDetailData.result.difficulty) / 1e12).toFixed(2)} TH`;
-
-      this.setState({ ethUSD, ethBTC, latestBlock, difficulty, marketCap });
+      this.setState({ ethUSD, ethBTC, latestBlock, marketCap });
     } catch (error) {
       console.error("Error fetching Ethereum data: ", error);
     }
@@ -74,103 +64,72 @@ class OtherPage extends Component {
     const { contractAddress } = this.state;
     try {
       const erc721TransactionResponse = await axios.get(
-        `${endpoint}?module=account&action=tokennfttx&contractaddress=${contractAddress}&startblock=0&endblock=99999999&page=1&offset=100&sort=asc&apikey=${apiKey}`
+        `${endpoint}?module=account&action=tokennfttx&contractaddress=${contractAddress}&startblock=0&endblock=99999999&page=1&offset=25&sort=desc&apikey=${apiKey}`
       );
-      const transactions = erc721TransactionResponse.data.result || [];
-
-      // Deduplicate transactions based on `txHash`
-      const uniqueTransactions = transactions.reduce((acc, tx) => {
-        if (!acc.find(item => item.hash === tx.hash)) acc.push(tx);
-        return acc;
-      }, []);
-
-      this.setState({ erc721Transactions: uniqueTransactions });
-
-      // Fetch Metadata and Price from OpenSea
-      const openSeaResponse = await axios.get(`${openSeaEndpoint}/${contractAddress}/1`); // Fetch data for token ID 1, or replace with a specific token ID if needed
-      const metadata = openSeaResponse.data;
-      const currentPrice = metadata?.last_sale?.total_price ?
-        (parseFloat(metadata.last_sale.total_price) / 1e18).toFixed(3) + " ETH" :
-        "No Sale Yet";
-
-      const previousPrice = metadata?.last_sale?.transaction?.previous_price ?
-        (parseFloat(metadata.last_sale.transaction.previous_price) / 1e18).toFixed(3) + " ETH" :
-        "No Previous Sale";
-
-      const priceChangePercentage = previousPrice && currentPrice !== "No Sale Yet" ?
-        ((parseFloat(currentPrice) - parseFloat(previousPrice)) / parseFloat(previousPrice) * 100).toFixed(2) + "%" :
-        "No Price Change";
-
-      this.setState({
-        erc721Metadata: metadata,
-        erc721Price: currentPrice,
-        previousPrice,
-        priceChangePercentage,
-      });
+      let transactions = erc721TransactionResponse.data.result || [];
+      
+      // Sorting by tokenID in ascending order
+      transactions = transactions.sort((a, b) => parseInt(a.tokenID) - parseInt(b.tokenID));
+      
+      this.setState({ erc721Transactions: transactions });
     } catch (error) {
       console.error("Error fetching ERC-721 data: ", error);
     }
   };
 
   renderERC721Info = () => {
-    const {
-      erc721Transactions,
-      erc721Metadata,
-      erc721Price,
-      previousPrice,
-      priceChangePercentage,
-    } = this.state;
+    const { erc721Transactions } = this.state;
 
     if (erc721Transactions.length === 0) {
       return <p>No ERC-721 transactions found.</p>;
     }
 
-    const firstRegistrant = erc721Transactions[0].to;
     return (
-      <Card>
+      <Card fluid>
         <Card.Content>
-          <Card.Header style={{ color: "#1d6fa5" }}>
-            <Icon name="image outline"></Icon> ERC-721 NFT Information
-          </Card.Header>
+          <Card.Header className="erc721-info-title">ERC-721 NFT Information</Card.Header>
           <Card.Description>
-            <strong>First Registrant:</strong> {firstRegistrant || "Unknown"}
-            <br />
-            <strong>Current Price:</strong> {erc721Price}
-            <br />
-            <strong>Previous Price:</strong> {previousPrice}
-            <br />
-            <strong>Price Change:</strong> {priceChangePercentage}
-            <br />
-            <strong>Description:</strong> {erc721Metadata.description || "N/A"}
-            <h4>Ownership History:</h4>
-            <Table celled>
-              <Table.Header>
-                <Table.Row>
-                  <Table.HeaderCell>From</Table.HeaderCell>
-                  <Table.HeaderCell>To</Table.HeaderCell>
-                  <Table.HeaderCell>Token ID</Table.HeaderCell>
-                  <Table.HeaderCell>Transaction Hash</Table.HeaderCell>
-                  <Table.HeaderCell>QR Code</Table.HeaderCell>
-                </Table.Row>
-              </Table.Header>
-              <Table.Body>
-                {erc721Transactions.map((tx, index) => (
-                  <Table.Row key={index}>
-                    <Table.Cell>{tx.from}</Table.Cell>
-                    <Table.Cell>{tx.to}</Table.Cell>
-                    <Table.Cell>{tx.tokenID}</Table.Cell>
-                    <Table.Cell>
-                      <a href={`https://etherscan.io/tx/${tx.hash}`} target="_blank" rel="noopener noreferrer">
-                        {tx.hash}
-                      </a>
-                    </Table.Cell>
-                    <Table.Cell>
-                      <QRCodeCanvas value={`https://etherscan.io/tx/${tx.hash}`} size={64} />
-                    </Table.Cell>
+            <h4>Ownership History (Sorted by Token ID Ascending):</h4>
+            <div className="table-container">
+              <Table className="transaction-table" celled>
+                <Table.Header>
+                  <Table.Row>
+                    <Table.HeaderCell>From</Table.HeaderCell>
+                    <Table.HeaderCell>To</Table.HeaderCell>
+                    <Table.HeaderCell>Token ID</Table.HeaderCell>
+                    <Table.HeaderCell>Transaction Hash</Table.HeaderCell>
+                    <Table.HeaderCell>ETH Transferred</Table.HeaderCell>
+                    <Table.HeaderCell>QR Code</Table.HeaderCell>
                   </Table.Row>
-                ))}
-              </Table.Body>
-            </Table>
+                </Table.Header>
+                <Table.Body>
+                  {erc721Transactions.map((tx, index) => (
+                    <Table.Row key={index}>
+                      <Table.Cell>
+                        {tx.from === "0x0000000000000000000000000000000000000000"
+                          ? "Minted"
+                          : tx.from}
+                      </Table.Cell>
+                      <Table.Cell>{tx.to}</Table.Cell>
+                      <Table.Cell>{tx.tokenID}</Table.Cell>
+                      <Table.Cell>
+                        <a href={`https://etherscan.io/tx/${tx.hash}`} target="_blank" rel="noopener noreferrer">
+                          {tx.hash}
+                        </a>
+                      </Table.Cell>
+                      <Table.Cell>
+                        {tx.value && tx.value !== "0"
+                          ? `${(parseFloat(tx.value) / 1e18).toFixed(5)} ETH`
+                          : "0.00 ETH"}
+                      </Table.Cell>
+                      <Table.Cell>
+                        <QRCodeCanvas value={`https://etherscan.io/tx/${tx.hash}`} size={64} />
+                      </Table.Cell>
+                    </Table.Row>
+                  ))}
+                </Table.Body>
+              </Table>
+            </div>
           </Card.Description>
         </Card.Content>
       </Card>
@@ -178,84 +137,51 @@ class OtherPage extends Component {
   };
 
   render() {
-    const { ethUSD, ethBTC, latestBlock, difficulty, marketCap } = this.state;
+    const { ethUSD, ethBTC, latestBlock, marketCap } = this.state;
     return (
-      <div>
+      <div style={{ padding: "20px", backgroundColor: "#161616", color: "#ffffff" }}>
         <Grid>
-          <Grid.Row>
-            <Grid.Column width={4}>
-              <Card>
-                <Card.Content>
-                  <Card.Header style={{ color: "#1d6fa5" }}>
-                    <Icon name="ethereum"></Icon> ETHER PRICE
-                  </Card.Header>
-                  <Card.Description textAlign="left">
-                    <Icon name="usd"></Icon> {ethUSD} <Icon name="at"></Icon> {ethBTC} <Icon name="bitcoin"></Icon>
-                  </Card.Description>
-                </Card.Content>
-              </Card>
+          <Grid.Row columns={2}>
+            <Grid.Column>
+              <div style={{ display: "flex", alignItems: "center", padding: "10px 0" }}>
+                <strong style={{ width: "120px" }}>Ether Price:</strong>
+                <span>{ethUSD} USD | {ethBTC} BTC</span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", padding: "10px 0" }}>
+                <strong style={{ width: "120px" }}>Latest Block:</strong>
+                <span>{latestBlock}</span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", padding: "10px 0" }}>
+                <strong style={{ width: "120px" }}>Difficulty:</strong>
+                <span>N/A</span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", padding: "10px 0" }}>
+                <strong style={{ width: "120px" }}>Market Cap:</strong>
+                <span>{marketCap} USD</span>
+              </div>
             </Grid.Column>
-            <Grid.Column width={4}>
-              <Card>
-                <Card.Content>
-                  <Card.Header style={{ color: "#1d6fa5" }}>
-                    <Icon name="list alternate outline"></Icon> LATEST BLOCK
-                  </Card.Header>
-                  <Card.Description textAlign="left">
-                    <Icon name="square"></Icon> {latestBlock}
-                  </Card.Description>
-                </Card.Content>
-              </Card>
-            </Grid.Column>
-            <Grid.Column width={4}>
-              <Card>
-                <Card.Content>
-                  <Card.Header style={{ color: "#1d6fa5" }}>
-                    <Icon name="setting"></Icon> DIFFICULTY
-                  </Card.Header>
-                  <Card.Description textAlign="left">{difficulty}</Card.Description>
-                </Card.Content>
-              </Card>
-            </Grid.Column>
-            <Grid.Column width={4}>
-              <Card>
-                <Card.Content>
-                  <Card.Header style={{ color: "#1d6fa5" }}>
-                    <Icon name="world"></Icon> MARKET CAP
-                  </Card.Header>
-                  <Card.Description textAlign="left">
-                    <Icon name="usd"></Icon> {marketCap}
-                  </Card.Description>
-                </Card.Content>
-              </Card>
+            <Grid.Column>
+              <Input
+                placeholder="Enter Contract Address"
+                onChange={this.handleContractAddressChange}
+                value={this.state.contractAddress}
+                fluid
+                style={{ marginBottom: "10px" }}
+              />
+              <Button onClick={this.handleFetchData} color="blue" fluid>
+                Fetch Data
+              </Button>
             </Grid.Column>
           </Grid.Row>
         </Grid>
-        <Grid>
-          <Grid.Row>
-           <Grid.Column width={6}>
-  <Input
-    placeholder="Contract Address"
-    onChange={this.handleContractAddressChange}
-    value={this.state.contractAddress}
-    fluid
-  />
-</Grid.Column>
-<Grid.Column width={2}>
-  <Button onClick={this.handleFetchData} color="blue">
-    Fetch Data
-  </Button>
-</Grid.Column>
-</Grid.Row>
-</Grid>
-<Grid divided="vertically">
-  <Grid.Row>
-    <Grid.Column>{this.renderERC721Info()}</Grid.Column>
-  </Grid.Row>
-</Grid>
-</div>
-);
-}
+        <Grid style={{ marginTop: "20px" }}>
+          <Grid.Row centered>
+            <Grid.Column>{this.renderERC721Info()}</Grid.Column>
+          </Grid.Row>
+        </Grid>
+      </div>
+    );
+  }
 }
 
 export default OtherPage;
