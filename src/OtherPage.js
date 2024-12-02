@@ -1,6 +1,6 @@
 import React, { Component } from "react";
 import axios from "axios";
-import { Card, Grid, Icon, Input, Button, Table } from "semantic-ui-react";
+import { Card, Grid, Input, Button, Table } from "semantic-ui-react";
 import { QRCodeCanvas } from "qrcode.react";
 
 const apiKey = "FBXGXMYSW5AGYX7P4YZV2HHCRD3439B4HG";
